@@ -6,11 +6,31 @@
 #include <string>
 #include <sstream>
 
+#define ASSERT(x) if(!x) __debugbreak();
+#define GLCall(x) GLClearError();\
+    x;\
+    ASSERT(GLLogCall(#x,__FILE__,__LINE__))
+
+static void GLClearError() 
+{
+    while (glGetError() != GL_NO_ERROR);
+}
+
+static bool GLLogCall(const char* function,const char* file,unsigned int line)
+{
+    while (GLenum error = glGetError())
+    {
+        std::cout << "[OpenGL Error] (" << error << "):"<<function<<"  " << file << "  " << line << std::endl;
+        return false;
+    }
+    return true;
+}
+
 struct ShaderProgramSources
 {
     std::string VertexSource;
     std::string FragmentSource;
-    std::string others;
+    //std::string others;
 };
 
 static ShaderProgramSources ParseShader(const std::string& filepath)
@@ -39,9 +59,7 @@ static ShaderProgramSources ParseShader(const std::string& filepath)
             ss[int(type)] << line << '\n';
         }
     }
-    //std::cout << "ShaderProgramSource'size is  " << sizeof(ShaderProgramSources) << "bytes" << "\n";
-    //std::cout << "The size of ss0  is " << sizeof(ss[0].str()) << "bytes" << "\n";
-    //std::cout << "The size of ss1  is " << sizeof(ss[1].str()) << "bytes" << "\n";
+
     return { ss[0].str(),ss[1].str() };
 }
 
@@ -107,46 +125,62 @@ int main(void)
     /* Make the window's context current */
     glfwMakeContextCurrent(window);
 
+    glfwSwapInterval(1);
+
     if (glewInit() != GLEW_OK) {
         std::cout << "error" << std::endl;
     }
-    //std::cout << glGetString(GL_VERSION) << std::endl;
+    std::cout << glGetString(GL_VERSION) << std::endl;
 
-    float position[6] = {
-        -0.5f, -0.5f,
-        0.0f, 0.5f,
-        0.5f, -0.5f
+    float positions[] = {
+        -0.5f, -0.5f,// 0
+         0.5f, -0.5f,// 1
+         0.5f,  0.5f,// 2
+        -0.5f,  0.5f,// 3
     };
+
+    unsigned int indices[] = {
+        0, 1, 2,
+        0, 2, 3
+    };
+
     unsigned int buffer;
-    glGenBuffers(1, &buffer);
-    glBindBuffer(GL_ARRAY_BUFFER, buffer);
-    glBufferData(GL_ARRAY_BUFFER, 6 * sizeof(float), position, GL_STATIC_DRAW);
+    GLCall(glGenBuffers(1, &buffer));
+    GLCall(glBindBuffer(GL_ARRAY_BUFFER, buffer));
+    GLCall(glBufferData(GL_ARRAY_BUFFER, 4 * 2 * sizeof(float), positions, GL_STATIC_DRAW));
 
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 2, 0);
+    GLCall(glEnableVertexAttribArray(0));
+    GLCall(glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 2, 0));
 
+    unsigned int ibo;
+    GLCall(glGenBuffers(1, &ibo));
+    GLCall(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo));
+    GLCall(glBufferData(GL_ELEMENT_ARRAY_BUFFER, 2 * 3 * sizeof(unsigned int), indices, GL_STATIC_DRAW));
 
     ShaderProgramSources sources = ParseShader("res/shader/Basic.shader");
-    std::cout << "Vertex \n" << sources.VertexSource << std::endl;
-    std::cout << "Fragment \n" << sources.FragmentSource << std::endl;
     unsigned int shader = CreateShader(sources.VertexSource, sources.FragmentSource);
+    GLCall(glUseProgram(shader));
 
-    glUseProgram(shader);//
+    GLCall(int location = glGetUniformLocation(shader, "u_Color"));
+    ASSERT(location == -1);
+    GLCall(glUniform4f(location, 0.8f, 0.5f, 0.8f, 1.0f));
 
+    float r = 0.0f;
+    float increment = 0.05f;
     /* Loop until the user closes the window */
     while (!glfwWindowShouldClose(window))
     {
         /* Render here */
-        glClear(GL_COLOR_BUFFER_BIT);
+        GLCall(glClear(GL_COLOR_BUFFER_BIT));
 
-        /*glBegin(GL_TRIANGLES);
-        glVertex2d(-0.5f, -0.5f);
-        glVertex2d(0.0f, 0.5f);
-        glVertex2d(0.5f, -0.5f);
-        glEnd();*/
+        GLCall(glUniform4f(location, r, 0.5f, 0.8f, 1.0f));
+        GLCall(glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr));
+        if (r > 1.0f)
+            increment = -0.05f;
+        else if (r < 0.0f)
+            increment = 0.05f;
 
-        glDrawArrays(GL_TRIANGLES, 0, 3);
-
+        r += increment;
 
         /* Swap front and back buffers */
         glfwSwapBuffers(window);
